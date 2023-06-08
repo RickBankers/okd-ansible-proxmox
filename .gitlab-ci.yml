@@ -1,0 +1,54 @@
+stages:
+  - validate
+  - build
+  - deploy
+  - ansible_deploy
+
+include:
+  - template: Terraform/Base.latest.gitlab-ci.yml
+
+variables:
+  # x prevents TF_STATE_NAME from beeing empty for non environment jobs like validate
+  # wait for https://gitlab.com/groups/gitlab-org/-/epics/7437 to use variable defaults
+  TF_STATE_NAME: default
+  TF_CACHE_KEY: default
+  TF_ROOT: terraform
+#  TF_CLI_ARGS_plan: "-var-file=vars/${CI_ENVIRONMENT_NAME}.tfvars"
+
+default:
+  before_script:
+    - apk --update add openssh-client
+    - mkdir -p ~/.ssh
+    # Paste the PRIVATE key into a gitlab variable. Pay attention to the linebreak at the end when pasting
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - eval "$(ssh-agent -s)"
+    - ssh-add ~/.ssh/id_rsa
+
+validate:
+  extends: .terraform:validate
+  environment:
+    name: dev
+
+plan dev:
+  extends: .terraform:build
+  environment:
+    name: dev
+
+apply dev:
+  extends: .terraform:deploy
+  when: manual
+  environment:
+    name: dev
+
+ansible_deploy:
+  stage: ansible_deploy
+  image: gitlab.lightphos.com:5555/root/gitlab-images/ansible:latest
+  when: manual
+  environment:
+    name: dev
+  script:
+    - pwd
+    - ansible-playbook playbook-services.yaml
+
+
